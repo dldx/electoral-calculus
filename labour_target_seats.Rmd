@@ -1,0 +1,142 @@
+---
+title: "Analysis of possible Labour targets"
+output:
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Summary
+There are **151** constituencies where the margin between the first and second parties is small and less than the combined share of other parties.
+
+Out of these:
+
+* **78** are constituencies where <span style="color: #C61148">Labour</span> came second
+    + **51** are <span style="color:#0096DB">Conservative</span> constituencies where <span style="color: #C61148">Labour</span> came second
+    + **25** are <span style="color:#FCCA46">SNP</span> constituencies where <span style="color: #C61148">Labour</span> came second
+    + **2** are **Plaid Cymru** constituencies where <span style="color: #C61148">Labour</span> came second
+    
+There are **92** Conservative constituencies where the margin between the first and second parties is small and the second party is progressive (Labour, SNP, LD, Green).
+
+```{r, echo=TRUE, message=FALSE, warning=F}
+library(dplyr)
+library(readr)
+library(plotly)
+library(DT)
+ge_2017 <- read_csv("http://researchbriefings.files.parliament.uk/documents/CBP-7979/hocl-ge2017-results-full.csv")
+
+```
+
+```{r}
+party_colors <- 
+"Party,Color
+Lab,#C61148
+Con,#0096DB
+SNP,#FCCA46
+LD,#F37A48"
+party_colors <- read.csv(textConnection(party_colors)) %>% mutate(Color=as.character(Color))
+```
+
+```{r, message=FALSE, warning=FALSE}
+results <- ge_2017 %>%
+    group_by(constituency_name) %>%
+    top_n(n = 2, wt=share) %>%
+    select(constituency_name, party_abbreviation, region_name, share) %>%
+    filter(!(region_name %in% c("Northern Ireland"))) %>%
+    mutate(margin=share-lead(share), second_party=lead(party_abbreviation), third_party_share=1-share-lead(share)) %>%
+    filter(!is.na(margin)) %>%
+    arrange(-margin) %>%
+    left_join(party_colors, by=c("party_abbreviation"="Party")) %>%
+    mutate(Color=ifelse(is.na(Color), "grey", Color), Color=as.factor(Color)) %>%
+    mutate(margin=margin*100, share=share*100, third_party_share=third_party_share*100) %>%
+    ungroup()
+```
+## Marginal constituencies where Labour is second
+```{r}
+possible_gains <- results %>%
+    filter(second_party=="Lab" & margin < third_party_share & margin < 15)
+
+results %>%
+    filter(second_party=="Lab") %>%
+    plot_ly() %>%
+add_lines(x=list(0, 35), y=list(0, 35), line=list(width=0), fillcolor="rgba(10,10,10,0.1)", fill="tozeroy") %>%
+add_lines(x=list(0, 35), y=list(15, 15), line=list(width=0), fillcolor="rgba(10,10,10,0.1)", fill="tozeroy") %>%
+    add_markers(x=~third_party_share, mode="markers", y=~margin, marker=list(color=~Color),
+            type="scatter", text=~paste("<b>",constituency_name, "</b>",
+                                        "<br>",
+                                        "First party: ", party_abbreviation,
+                                        "<br>",
+                                        "Second party: ", second_party)) %>%
+           layout(xaxis=list(title="Small party combined share (%)"),
+                 yaxis=list(title="Margin (%)"),
+                 showlegend=F)
+```
+
+## Constituencies where the small parties have a share less than the margin and the margin is less than 15%
+
+```{r, message=FALSE, warning=FALSE}
+possible_gains %>%
+    arrange(margin) %>%
+    select(-Color) %>%
+    mutate(share=paste0(format(round(share, 1), nsmall = 1), "%"),
+          margin=paste0(format(round(margin, 1), nsmall = 1), "%"),
+          third_party_share=paste0(format(round(third_party_share, 1), nsmall = 1), "%")) %>%
+    datatable(options=list(pageLength=20),
+              colnames=gsub("_", " ", gsub("(^|_)([[:alpha:]])", "\\1\\U\\2", colnames(.), perl=TRUE))) %>%
+formatStyle(
+  'party_abbreviation',
+    target="row",
+  backgroundColor = styleEqual(party_colors$Party, party_colors$Color)
+) %>% formatStyle(
+  'second_party',
+  backgroundColor = styleEqual(party_colors$Party, party_colors$Color)
+)
+```
+
+## Filter by Conservative constituencies
+
+```{r, message=FALSE, warning=FALSE}
+possible_gains %>%
+    arrange(margin) %>%
+    filter(party_abbreviation=="Con" & second_party=="Lab") %>%
+    select(-Color) %>%
+    mutate(share=paste0(format(round(share, 1), nsmall = 1), "%"),
+          margin=paste0(format(round(margin, 1), nsmall = 1), "%"),
+          third_party_share=paste0(format(round(third_party_share, 1), nsmall = 1), "%")) %>%
+    datatable(options = list(pageLength=20),
+              colnames=gsub("_", " ", gsub("(^|_)([[:alpha:]])", "\\1\\U\\2", colnames(.), perl=TRUE))) %>%
+formatStyle(
+  'party_abbreviation',
+    target="row",
+  backgroundColor = styleEqual(party_colors$Party, party_colors$Color)
+) %>% formatStyle(
+  'second_party',
+  backgroundColor = styleEqual(party_colors$Party, party_colors$Color)
+)
+```
+
+## Conservative constituencies where the second party is Labour, LD, SNP or Green
+
+```{r, message=FALSE, warning=FALSE}
+results %>%
+    filter(party_abbreviation == "Con" & second_party %in% c("Lab", "LD", "Green", "SNP")) %>%
+arrange(margin) %>%
+    select(-Color) %>%
+    mutate(share=paste0(format(round(share, 1), nsmall = 1), "%"),
+          margin=paste0(format(round(margin, 1), nsmall = 1), "%"),
+          third_party_share=paste0(format(round(third_party_share, 1), nsmall = 1), "%")) %>%
+    datatable(options = list(pageLength=20),
+              colnames=gsub("_", " ", gsub("(^|_)([[:alpha:]])", "\\1\\U\\2", colnames(.), perl=TRUE))) %>%
+formatStyle(
+  'party_abbreviation',
+    target="row",
+  backgroundColor = styleEqual(party_colors$Party, party_colors$Color)
+) %>% formatStyle(
+  'second_party',
+  backgroundColor = styleEqual(party_colors$Party, party_colors$Color)
+)
+```
+
